@@ -16,7 +16,7 @@ import copy
 
 # configuration parser
 parser = argparse.ArgumentParser(description = "Configuration.")
-parser.add_argument('--resultroot', type=str, default='../results/')
+parser.add_argument('--resultroot', type=str, default='/home/mila/p/prakhar.ganesh/scratch/rashomon-set-results/')
 ## datasets
 parser.add_argument('--dataset', type=str, default='adult')
 ## estimation of predictive multiplicity
@@ -134,7 +134,7 @@ if args.method == 'sampling':
 
     savename = filename + '.npz'
 
-    np.savez_compressed(args.resultroot+savename,
+    np.savez_compressed('../results/'+savename,
                         all_sampling_test_loss=all_sampling_test_loss,
                         all_sampling_test_scores=all_sampling_test_scores,
                         eps_list=eps_list,
@@ -214,7 +214,7 @@ elif args.method == 'dropout':
 
     savename = filename + '.npz'
 
-    np.savez_compressed(args.resultroot+savename,
+    np.savez_compressed('../results/'+savename,
                         all_drp_test_loss=all_drp_test_loss,
                         all_drp_test_scores=all_drp_test_scores,
                         eps_list=eps_list,
@@ -263,7 +263,7 @@ elif args.method == 'awp':
 
     savename = filename + '.npz'
 
-    np.savez_compressed(args.resultroot+savename,
+    np.savez_compressed('../results/'+savename,
                         perturb_scores=perturb_scores,
                         perturb_losses=perturb_losses,
                         eps_list=eps_list,

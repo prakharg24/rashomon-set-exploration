@@ -1,0 +1,17 @@
+=== 2024-06-13-11.16.55 ===
+Argument Summary
+ resultroot: ../results/
+ dataset: credit-approval
+ model: vgg16
+ base_epoch: 10
+ method: sampling
+ neps: 11
+ eps_min: 0.0
+ eps_max: 0.04
+ sampling_nmodel: 100
+ epoch: 20,25,30,35,40,45,50,55
+ dropoutmethod: bernoulli
+ drp_nmodel: 100
+ drp_max_ratio: 0.3
+ awp_eps: 
+Device: cuda:0

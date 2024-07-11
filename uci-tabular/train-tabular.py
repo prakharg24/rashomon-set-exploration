@@ -17,7 +17,7 @@ from utils.awp import awp
 
 # configuration parser
 parser = argparse.ArgumentParser(description = "Configuration.")
-parser.add_argument('--resultroot', type=str, default='../results/')
+parser.add_argument('--resultroot', type=str, default='/home/mila/p/prakhar.ganesh/scratch/rashomon-set-results/')
 ## datasets
 parser.add_argument('--dataset', type=str, default='adult')
 parser.add_argument('--test_size', type=float, default=0.25) 
