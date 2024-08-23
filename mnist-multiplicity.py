@@ -1,11 +1,24 @@
 import argparse
+from tqdm import tqdm
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
+import matplotlib.pyplot as plt
 
+
+class GaussianNoise(object):
+    def __init__(self, mean=0., std=1.):
+        self.std, self.mean = std, mean
+        
+    def __call__(self, tensor):
+        return tensor + torch.randn(tensor.size()) * self.std + self.mean
+    
+    def __repr__(self):
+        return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 class Net(nn.Module):
     def __init__(self):
@@ -32,46 +45,24 @@ class Net(nn.Module):
         output = F.log_softmax(x, dim=1)
         return output
 
-
-def train(args, model, device, train_loader, optimizer, epoch):
-    model.train()
-    for batch_idx, (data, target) in enumerate(train_loader):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = F.nll_loss(output, target)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
-            if args.dry_run:
-                break
-
-
-def test(model, device, test_loader):
+def pred(model, device, test_loader):
     model.eval()
-    test_loss = 0
-    correct = 0
+    pred_arr, lbl_arr = [], []
     with torch.no_grad():
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
-            test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
+            pred = output.argmax(dim=1)  # get the index of the max log-probability
+            pred_arr.extend(pred.detach().cpu().tolist())
+            lbl_arr.extend(target.detach().cpu().tolist())
 
-    test_loss /= len(test_loader.dataset)
-
-    print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-        test_loss, correct, len(test_loader.dataset),
-        100. * correct / len(test_loader.dataset)))
-
+    return np.array(pred_arr), np.array(lbl_arr)
 
 def main():
     # Training settings
-    parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
+    parser = argparse.ArgumentParser(description='MNIST Multiplicity')
+    parser.add_argument('--dataset', type=str, default='mnist',
+                        help='dataset to train (choose from: mnist|mnist-noise)')
     parser.add_argument('--batch-size', type=int, default=64, metavar='N',
                         help='input batch size for training (default: 64)')
     parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
@@ -107,38 +98,55 @@ def main():
     else:
         device = torch.device("cpu")
 
-    train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
     if use_cuda:
         cuda_kwargs = {'num_workers': 1,
                        'pin_memory': True,
-                       'shuffle': True}
-        train_kwargs.update(cuda_kwargs)
+                       'shuffle': False}
         test_kwargs.update(cuda_kwargs)
 
-    transform=transforms.Compose([
+    test_transform=transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
-        ])
-    dataset1 = datasets.MNIST('../data', train=True, download=True,
-                       transform=transform)
+    ])
+
     dataset2 = datasets.MNIST('../data', train=False,
-                       transform=transform)
-    train_loader = torch.utils.data.DataLoader(dataset1,**train_kwargs)
+                       transform=test_transform)
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
 
     model = Net().to(device)
-    optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 
-    scheduler = StepLR(optimizer, step_size=1, gamma=args.gamma)
-    for epoch in range(1, args.epochs + 1):
-        train(args, model, device, train_loader, optimizer, epoch)
-        test(model, device, test_loader)
-        scheduler.step()
+    all_pred = []
+    for seed in tqdm(range(100)):
+        args.seed = seed
+        filename = '/home/mila/p/prakhar.ganesh/scratch/rashomon-set-mnist/model_%s_%d.pt' % (args.dataset, args.seed)
+        model.load_state_dict(torch.load(filename))
 
-    if args.save_model:
-        torch.save(model.state_dict(), "mnist_cnn.pt")
+        pred_arr, lbl_arr = pred(model, device, test_loader)
 
+        acc = np.mean(pred_arr==lbl_arr)
+        if acc > 0.98:
+            all_pred.append(pred_arr)
+    
+    print("Number of Models: %d" % len(all_pred))
+    all_pred = np.array(all_pred)
 
+    def get_ambiguity(pred_mat):
+        amb_bool = pred_mat[0] == pred_mat
+        amb = 1 - np.mean(np.all(amb_bool, axis=0))
+        return amb
+
+    print("Ambiguity for the Dataset: %.2f%%" % (get_ambiguity(all_pred)*100))
+    amb_per_class = []
+    for cls_ind in range(10):
+        amb_per_class.append(get_ambiguity(all_pred[:, lbl_arr==cls_ind])*100)
+        print("Ambiguity for Class %d: %.2f%%" % (cls_ind, get_ambiguity(all_pred[:, lbl_arr==cls_ind])*100))
+    
+    plt.bar(range(10), amb_per_class)
+    plt.title('MNIST-Rotate')
+    plt.xlabel('Classes')
+    plt.ylabel('Ambiguity (Percentage)')
+    plt.savefig('mnist-rotate_per_class_amb.png')
+    
 if __name__ == '__main__':
     main()
